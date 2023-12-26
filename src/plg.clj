@@ -1,39 +1,13 @@
-(ns plg)
+(ns src.plg)
 (require '[clojure.string :as str]
-         '[clojure.edn :as edn])
+         '[clojure.edn :as edn]
+         '[src.lang :refer :all]
+         '[src.utils :refer :all]
+         '[src.samples :refer :all])
 
 
 
-;; Testing stuff
-
-(defn array [& values]
-  (cons ::array values))
-
-(defn tag-args [tag-expr]
-  {:doc "Return tag arguments"}
-  (first (drop 2 tag-expr)))
-
-(defn tag-name [tag-expr]
-  {:doc "Return tag name"}
-  (first (rest tag-expr)))
-
-(defn tag [name & children]
-  {:doc "Create named tag with children"}
-  (if children
-    (list ::tag name children)
-    (list ::tag name)))
-
-(defn tag? [expr]
-  {:doc "Check if expr is tag"}
-  (= (key expr) ::tag))
-
-(defn element-type [expr]
-  {:doc "what is type of this element"}
-  (if (tag? expr)
-    ::tag
-    (if (string? expr)
-      ::sring
-      ::rest)))
+;; This file is for testing things it may even be invalid 
 
 (element-type (tag :div))
 (element-type "sd")
@@ -51,27 +25,7 @@
 (tag-args (tag :div "asd" "dsa" (tag :br)))
 (tag-name (tag :div "asd" "dsa" (tag :br)))
 
-
-(defn name-is [expr name]
-  {:doc "Check if tag name is equal to @name
-         typeof name: [string, keyword]"}
-  (if (keyword? name)
-    (= (tag-name expr) name)
-    (= (tag-name expr) (keyword name))))
-
 ;; matchers
-
-(defn value-is [expr value]
-  {:doc "Check if (first) argument of expr is equal to value"}
-  (let [values (tag-args expr)]
-    (if (or (= values nil) (> (count values) 1))
-      false
-      (= (first values) value))))
-
-(defn values-contain [expr value]
-  {:doc "Check if arguments of expr contain value"}
-  (let [values (tag-args expr)]
-    (some (fn [x] (= x value)) values)))
 
 (name-is (tag :div "aa") :div)
 (name-is (tag :div "aa") "div")
@@ -90,35 +44,8 @@
 
 ;; sample data
 
-(def use-sample
-  (tag :root
-       (tag :div "empty")
-       (tag :students
-            (tag :student "name1")
-            (tag :student "name2")
-            (tag :student "name3")
-            (tag :student "name4"))))
-
 (first (tag-args (last (tag-args use-sample))))
 
-(def use-students
-  (list
-   (tag :student "name1")
-   (tag :student "name2")
-   (tag :student "bob" "tom")))
-
-(def use-list-sample
-  (list
-   (tag :div "empty")
-   (tag :students
-        (tag :student "name1")
-        (tag :student "name2")
-        (tag :student "bob"))
-   (tag :div "element")
-   (tag :div
-        (tag :br "br"))
-   (tag :br)
-   (tag :br "br here")))
 (tag :br)
 
 ;; ---
@@ -132,16 +59,16 @@
 ;; list of tag predicates (...)
 ;; {:tag "name of tag" :matcher *condition on value of tag (fn)*}
 
-(def match-all-q {:tag "*"})
-(def match-div-q {:tag "div"})
-(def match-br-q {:tag "br"})
-
 (defn match-query-tag [expr query]
   (let [name (query :tag)]
     (if (= name "*")
       true
       (name-is expr name))))
 
+;; why do we ever need this?
+;; beeing able to process single values and list in same functions
+;; is very handy
+;; it is also nice to be able to iterate over 
 (defn turn-into-list [expr]
   {:doc "Make sure expr is list so it's iterable"}
   (if (tag? expr)
@@ -173,7 +100,7 @@
 
 (defn filter-by-index [tags idx]
   (loop [values tags index 0]
-    (if (= index idx)
+    (if (and (= index idx) (not-empty values))
       (list (first values))
       (if (empty? values)
         (list)
@@ -224,31 +151,76 @@
                 (list)
                 tags)))
 
-(defn find-query-abs-impl [expr queries]
-  (loop [tags expr q queries results []]
-    (if (empty? tags)
-      results ;; looked over all tags - nothing to look for
-      (let [matches (query-matching-expressions tags (first q))
-            filtered (process-filters matches (first q))
-            children (list-tag-args filtered)]
-        (if (<= (count q) 1) ;; last query part - if we match here result is @matches
-          (concat results filtered)
-          (recur children (rest q) results)))))) ;; bite head and go down
+(defn find-query-abs-impl [tags q results]
+  (if (empty? tags)
+    results ;; looked over all tags - nothing to look for
+    (let [matches (query-matching-expressions tags (first q))
+          filtered (process-filters matches (first q))]
+      (if (<= (count q) 1) ;; last query part - if we match here result is @matches
+        (concat results filtered)
+        (concat results
+                (reduce
+                 (fn [acc, x]
+                   (concat acc (find-query-abs-impl (list-tag-args (list x)) (rest q) [])))
+                 []
+                 filtered)))))) ;; bite head and go down
 
 (defn find-query-abs [expr query]
   {:doc "Find elements by query with absolute path;
          @expr - tag or list of tags"}
-  (let [list-exprs (turn-into-list expr) queries (turn-into-list query)]
-    (find-query-abs-impl list-exprs queries)))
+  (let [list-exprs (turn-into-list expr) queries (turn-into-list query) results []]
+    (find-query-abs-impl list-exprs queries results)))
 
 (find-query-abs use-list-sample (list match-div-q {:tag "br"}))
 (find-query-abs use-list-sample (list {:tag "students"} {:tag "student"}))
 
 (find-query-abs use-list-sample
-                (list {:tag "students"} {:tag "student" :id 2}))
-(find-query-abs use-list-sample
-                (list {:tag "*" :id 2}))
+                (list {:tag "students"} {:tag "student" :id 1}))
+(find-query-abs use-list-sample (list {:tag "*" :id 2}))
+(find-query-abs use-list-sample (list {:tag "*"} {:tag "*" :id 0}))
 
-(find-query-abs use-list-sample (list {:tag "student"}))
+
+(defn find-query-rel-impl [tags q results]
+  (if (empty? tags)
+    results ;; looked over all tags - nothing to look for
+    (let [matches (query-matching-expressions tags (first q))
+          filtered (process-filters matches (first q))]
+      (if (empty? filtered)
+        (concat results (find-query-rel-impl (list-tag-args tags) q results))
+        (if (and (not-empty filtered) (<= (count q) 1))
+          (concat results filtered)
+          (concat results (reduce
+                           (fn [acc, x]
+                             (concat acc (find-query-rel-impl (list-tag-args (list x)) (rest q) [])))
+                           []
+                           filtered)))))))
+
+(defn find-query-rel [expr query]
+  {:doc "Find elements by query with absolute path;
+         @expr - tag or list of tags
+         @query - query or list of queries"}
+  (let [list-exprs (turn-into-list expr) queries (turn-into-list query) results []]
+    (find-query-rel-impl list-exprs queries results)))
+
+(defn find-all-query [expr query]
+  (let [q-list (turn-into-list query) relative ((first q-list) :rel)]
+    (if relative
+      (find-query-rel expr query)
+      (find-query-abs expr query))))
+
+(find-query-rel use-list-sample (list {:tag "student" :id 1}))
+(find-all-query use-list-sample {:tag "student" :rel true})
+(find-all-query use-list-sample {:tag "student"})
+
+(find-all-query use-list-sample (list {:tag "*"} {:tag "*"}))
+(find-all-query use-list-sample (list {:tag "*" :rel true} {:tag "*" :id 0}))
+
+
+(list-tag-args use-list-sample)
 
 (str/includes? "asd" "d")
+
+(flatten (list (list 4) (list) (list 1 2 3)))
+
+(defn test [items]
+  (map (fn)))

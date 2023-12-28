@@ -39,11 +39,6 @@
 (values-contain (tag :div "x" "d") "x2")
 (values-contain (tag :div "x" (tag :br)) (tag :div))
 
-;; ------
-
-
-;; sample data
-
 (first (tag-args (last (tag-args use-sample))))
 
 (tag :br)
@@ -214,13 +209,117 @@
 
 (find-all-query use-list-sample (list {:tag "*"} {:tag "*"}))
 (find-all-query use-list-sample (list {:tag "*" :rel true} {:tag "*" :id 0}))
+(find-all-query use-list-sample (list {:tag "*"} {:tag "*" :id 0}))
 
 
 (list-tag-args use-list-sample)
 
 (str/includes? "asd" "d")
 
-(flatten (list (list 4) (list) (list 1 2 3)))
+(def use-schema
+  (tag :root
+       (tag :tank
+            (tag :t34 "*")
+            (tag :abrams))
+       (tag :plane)))
 
-(defn test [items]
-  (map (fn)))
+(defn validate-tag-name [tag node]
+  (= (tag-name tag) (tag-name node)))
+
+(validate-tag-name (tag :s) (tag "s"))
+
+(defn schema-validation-impl [tags schema]
+  (let [first-tag (first tags) first-node (first schema)]
+    (if (and (empty? tags) (empty? schema))
+      true
+      (and
+       (and
+        (validate-tag-name first-tag first-node)
+        (if (value-is first-node "*")
+          true
+          (schema-validation-impl
+           (list-tag-args (list first-tag))
+           (list-tag-args (list first-node)))))
+       (schema-validation-impl (rest tags) (rest schema))))))
+
+(defn validate-by-schema [tags schema]
+  (let [tag-list (turn-into-list tags) schema-list (turn-into-list schema)]
+    (schema-validation-impl tag-list schema-list)))
+
+(validate-by-schema (tag :root
+                         (tag :tank
+                              (tag :t34
+                                   (tag :crew))
+                              (tag :abrams))
+                         (tag :plane))
+                    use-schema)
+
+(defn get-name-and-content [s]
+  (let [matches (re-find #"(.*)\[(.*)\]" s)]
+    (if (= (count matches) 3)
+      (list (second matches) (nth matches 2))
+      (list s ""))))
+
+(get-name-and-content "div[=text]")
+(get-name-and-content "div")
+
+(defn get-q-params [s]
+  (let [res (get-name-and-content s) name (first res) content (second res)]
+    (if (= (first content) "=")
+      (list name :is (subs content 1))
+      (if (= (first content) "%")
+        (list name :contains (subs content 1))
+        (let [num (edn/read-string content) is-number (number? num)]
+          (if is-number
+            (list name :id num)
+            (list name :none nil)))))))
+
+(get-q-params "div[=text]")
+(get-q-params "div[%text]")
+(get-q-params "div[1]")
+(get-q-params "div")
+
+(js/parseInt "5")
+(number? (edn/read-string "23"))
+(if (Integer/parseInt "sd") true false)
+
+(defn get-rel-name [s is-rel]
+  (if is-rel
+    (subs s 1)
+    s))
+
+(defn transform-into-dict [s]
+  (let [is-rel (= "~" (first s))
+        text (get-rel-name s is-rel)
+        params (get-q-params text)
+        name (nth params 0) opts-key (nth params 1) opts-val (nth params 2)]
+    {:tag name (keyword opts-key) opts-val :rel is-rel}))
+
+(transform-into-dict "~div[=text]")
+(transform-into-dict "div[=text]")
+(transform-into-dict "~div")
+(transform-into-dict "div")
+
+(defn query-from-string [s]
+  (map
+   (fn [x] (transform-into-dict x))
+   (str/split s "/")))
+
+(defn find-all [expr q]
+  (find-all-query expr (query-from-string q)))
+
+(find-all use-list-sample "students/*")
+(find-all use-list-sample "~student")
+(find-all use-list-sample "~student[=name1]")
+(find-all use-list-sample "div")
+
+(query-from-string "div")
+(query-from-string "~div[=t]/br")
+
+(str/split "s/da/d" "/")
+
+(re-find #"(.*)\[(.*)\]" "div[=text]")
+(re-find #"(.*)\[(.*)\]" "div")
+(re-find #"\[(.*)\]" "div[]")
+
+({:tag "s" :rel true} :key "d")

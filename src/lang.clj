@@ -23,5 +23,5 @@
   (if (tag? expr)
     ::tag
     (if (string? expr)
-      ::sring
+      ::string
       ::rest)))

@@ -41,7 +41,7 @@
              (tag :br "br")))))
 
 ;; queries 
-
+(element-type use-sample)
 
 (def match-all-q {:tag "*"})
 (def match-div-q {:tag "div"})

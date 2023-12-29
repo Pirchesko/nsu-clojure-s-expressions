@@ -26,6 +26,14 @@
                 (list)
                 tags)))
 
+(defn list-tag-args-agnostic [tags]
+  {:doc "Get list of children from @tags with all types"}
+  (reduce (fn [acc, x]
+            (concat acc (tag-args x)))
+          (list)
+          tags))
+
+
 (defn values-contain [expr value]
   {:doc "Check if arguments of expr contain value"}
   (let [values (tag-args expr)]
@@ -122,20 +130,26 @@
   (let [list-exprs (turn-into-list expr) queries (turn-into-list query) results []]
     (find-query-abs-impl list-exprs queries results)))
 
+(defn select-filtered [filtered q]
+  (if (<= (count q) 1)
+    filtered
+    (list)))
 
 (defn find-query-rel-impl [tags q results]
-  (if (empty? tags)
+  (if (or (empty? tags) (empty? q))
     results ;; looked over all tags - nothing to look for
     (let [matches (query-matching-expressions tags (first q))
           filtered (process-filters matches (first q))]
       (concat results
-              filtered
+              (select-filtered filtered q)
               (find-query-rel-impl (list-tag-args tags) q results)
               (reduce
                (fn [acc, x]
                  (concat acc (find-query-rel-impl (list-tag-args (list x)) (rest q) [])))
                []
                filtered)))))
+
+(find-query-rel-impl use-list-sample (list {:tag "div"}) [])
 
 (defn find-query-rel [expr query]
   {:doc "Find elements by query with relative path;
@@ -144,7 +158,8 @@
   (let [list-exprs (turn-into-list expr) queries (turn-into-list query) results []]
     (find-query-rel-impl list-exprs queries results)))
 
-(find-query-rel use-list-sample {:tag "br"})
+(find-query-rel use-list-sample (list {:tag "student"} {:tag "div"}))
+(find-query-rel use-list-sample (list {:tag "student"}))
 
 (find-query-rel use-list-sample {:tag "br" :is "br2"})
 
@@ -162,14 +177,14 @@
 
 (defn get-q-params [s]
   (let [res (get-name-and-content s) name (first res) content (second res)]
-    (if (= (first content) "=")
+    (if (= (first content) \=)
       (list name :is (subs content 1))
-      (if (= (first content) "%")
+      (if (= (first content) \%)
         (list name :contains (subs content 1))
         (let [num (edn/read-string content) is-number (number? num)]
           (if is-number
             (list name :id num)
-            (list name :none nil)))))))
+            (list name :none "")))))))
 
 (defn get-rel-name [s is-rel]
   (if is-rel
@@ -177,7 +192,7 @@
     s))
 
 (defn transform-into-dict [s]
-  (let [is-rel (= "~" (first s))
+  (let [is-rel (= \~ (first s))
         text (get-rel-name s is-rel)
         params (get-q-params text)
         name (nth params 0) opts-key (nth params 1) opts-val (nth params 2)]
@@ -186,7 +201,26 @@
 (defn query-from-string [s]
   (map
    (fn [x] (transform-into-dict x))
-   (str/split s "/")))
+   (str/split s #"/")))
 
+;; query format
+;; <tag-name>/<tag-name>[options]/.../
+;; * - any tag
+;; valid options are:
+;; 1. [=text] - match exact text occurence
+;; 2. [%text] - match one of values being equal to text
+;; 3. [id]    - match element by index
+;; ~ - relative search (first tag only)
+;; examples:
+;; div/br[0] - get first br after every div
+;; students/student[=bob] - search for student named bob
+;; planets/countries[%india] - search for planets that have counry called india
+;; ~div/div - find all nested div's in hierarchy
 (defn find-all [expr q]
+  {:doc "Find all tags matching query @q"}
   (find-all-query expr (query-from-string q)))
+
+(defn find-one [expr q]
+  {:doc "Find first tag matching query @q
+         nil if nothing found"}
+  (first (find-all expr q)))

@@ -1,10 +1,16 @@
 (ns src.spath)
 (require '[src.lang :refer :all]
+         '[clojure.string :as str]
          '[src.utils :refer :all]
          '[clojure.edn :as edn]
-         '[clojure.string :as str]
          '[src.samples :refer :all])
 
+;; tag-for consists of query and options dictionary
+;; examles are:
+;; (tag-for "div" {:values true})
+;; (tag-for "div")
+;; first argument is custom query selector
+;; :values params means that we should take children items of provided tags 
 (defn tag-for [query & options]
   {:doc "Create named tag with children"}
   (if options
@@ -17,7 +23,6 @@
 
 (defn tag-query [expr]
   (second expr))
-
 
 (defn repeat-str [x n]
   (str/join "" (repeat n x)))
@@ -43,6 +48,7 @@
 
 
 (defn get-options [val]
+  {:doc "Return options of provided schema tag"}
   (let [len (count val)]
     (if (= len 3)
       (let [opts (first (last val))]
@@ -53,11 +59,11 @@
 
 
 (defn process-selector [schema tags]
+  {:doc "Filter @tags children with chema tag"}
   (let [values ((get-options schema) :values)]
     (if values
-      (list-tag-args tags)
+      (list-tag-args-agnostic tags)
       tags)))
-
 
 (defn transform-impl [schema val depth]
   (if (tag? schema)
@@ -76,6 +82,5 @@
         (str (pad depth) "\"" schema "\"")))))
 
 (defn transform [schema val]
+  {:doc "Convert tags in @val to html using @schema"}
   (transform-impl schema val 0))
-
-(println (transform (tag-for "*/*") use-list-sample))

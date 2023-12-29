@@ -8,6 +8,39 @@
          '[src.spath :refer :all]
          '[clojure.test :refer :all])
 
+(def transform-res1 "<root>
+  <scholar>
+    \"name1\"
+    \"name2\"
+    \"bob\"
+  </scholar>
+  <div>
+    <br/>
+    <br>
+      \"br\"
+    </br>
+    <br>
+      \"br2\"
+    </br>
+  </div>
+</root>")
+
+(def transform-res2 "<student>
+  \"name1\"
+</student>
+<student>
+  \"name2\"
+</student>
+<student>
+  \"bob\"
+</student>
+<br>
+  \"br\"
+</br>
+<br>
+  \"br2\"
+</br>")
+
 (element-type (tag :div))
 (element-type "str")
 
@@ -30,7 +63,7 @@
 (values-contain (tag :div) "d")
 
 (filter-by-index use-students 0)
-(filter-by-index use-students 10)
+(filter-by-index use-students 10) 
 (filter-values-contain use-students "tom")
 
 (process-filters use-students {:tag "div" :is "name1"})
@@ -44,6 +77,33 @@
 (find-all use-list-sample "div[2]")
 (find-one use-list-sample "br")
 (find-one use-list-sample "nope")
+
+(transform
+ (tag :root
+      (tag :scholar
+           (tag-for "~student" {:values true}))
+      (tag :div
+           (tag-for "~br")))
+ use-list-sample)
+(transform (tag-for "*/*") use-list-sample)
+(transform (tag-for "*") use-list-sample)
+
+(validate-by-schema (tag :root
+                          (tag :tank
+                               (tag :t34
+                                    (tag :crew))
+                               (tag :abrams))
+                          (tag :plane))
+                     use-schema)
+
+(validate-by-schema
+   (tag :root
+        (tag :tank
+             (tag :tiger
+                  (tag :mass))
+             (tag :leopard))
+        (tag :plane))
+   use-schema)
 
 (deftest test-lang
   (testing "lang-types-tests"
@@ -102,6 +162,38 @@
          (tag :br)))
     (is (=
          (find-one use-list-sample "nope")
-         nil))))
+         nil))
+     )
+  
+  (testing "Transform"
+    (is (= transform-res1 (transform
+              (tag :root
+                   (tag :scholar
+                        (tag-for "~student" {:values true}))
+                   (tag :div
+                        (tag-for "~br")))
+              use-list-sample)))
+    (is (= transform-res2 (transform (tag-for "*/*") use-list-sample))))
+  
+  (testing "Schema"
+    (is (validate-by-schema (tag :root
+                         (tag :tank
+                              (tag :t34 
+                                   (tag :crew))
+                              (tag :abrams))
+                         (tag :plane))
+                    use-schema))
+    
+    (is ( = false 
+         (validate-by-schema 
+          (tag :root 
+               (tag :tank 
+                    (tag :tiger 
+                         (tag :mass)) 
+                    (tag :leopard)) 
+               (tag :plane)) 
+          use-schema)))
+    )
+  )
 
 (run-tests `test.tests)

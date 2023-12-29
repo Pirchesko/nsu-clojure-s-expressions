@@ -46,3 +46,12 @@
 (def match-all-q {:tag "*"})
 (def match-div-q {:tag "div"})
 (def match-br-q {:tag "br"})
+
+;; schema
+
+(def use-schema
+  (tag :root
+       (tag :tank
+            (tag :t34 "*")
+            (tag :abrams))
+       (tag :plane)))
